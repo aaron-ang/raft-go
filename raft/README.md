@@ -1,9 +1,9 @@
 # Project 2: Raft
 
-### Part 2A Due Date: TBD
-### Part 2B Due Date: TBD
-### Part 2C Due Date: TBD
-### Part 2D Due Date: TBD
+### Part 2A Due Date: March 22 (11:59 PM)
+### Part 2B Due Date: April 12 (11:59 PM)
+### Part 2C Due Date: April 26 (11:59 PM)
+### Part 2D Due Date: May 10 (11:59 PM)
 
 ## Introduction
 
@@ -62,7 +62,7 @@ A service calls `Make(peers,me,…)` to create a Raft peer. The peers argument i
 
 `raft.go` contains example code that sends an RPC (`sendRequestVote()`) and that handles an incoming RPC (`RequestVote()`). Your Raft peers should exchange RPCs using the labrpc Go package (source in `src/labrpc`). The tester can tell `labrpc` to delay RPCs, re-order them, and discard them to simulate various network failures. While you can temporarily modify `labrpc`, make sure your Raft works with the original `labrpc`, since that's what we'll use to test and grade your assignment. Your Raft instances must interact only with RPC; for example, they are not allowed to communicate using shared Go variables or files.
 
-## Part 2A: Leader Election
+## Part 2A: Leader Election (due March 22)
 
 ### Task
 
@@ -101,7 +101,7 @@ ok      raft    10.187s
 
 Each "Passed" line contains five numbers; these are the time that the test took in seconds, the number of Raft peers (usually 3 or 5), the number of RPCs sent during the test, the total number of bytes in the RPC messages, and the number of log entries that Raft reports were committed. Your numbers will differ from those shown here. You can ignore the numbers if you like, but they may help you sanity-check the number of RPCs that your implementation sends. For all of the parts the grading script will fail your solution if it takes more than 600 seconds for all of the tests (`go test`), or if any individual test takes more than 120 seconds.
 
-## Part 2B: Log
+## Part 2B: Log (due April 12)
 
 ### Task
 
@@ -146,7 +146,7 @@ sys     0m1.406s
 
 The "ok raft 58.142s" means that Go measured the time taken for the 2B tests to be 58.142 seconds of real (wall-clock) time. The "user 0m2.477s" means that the code consumed 2.477 seconds of CPU time, or time spent actually executing instructions (rather than waiting or sleeping). If your solution uses much more than a minute of real time for the 2B tests, or much more than 5 seconds of CPU time, you may run into trouble later on. Look for time spent sleeping or waiting for RPC timeouts, loops that run without sleeping or waiting for conditions or channel messages, or large numbers of RPCs sent.
 
-## Part 2C: Persistence
+## Part 2C: Persistence (due April 26)
 
 If a Raft-based server reboots it should resume service where it left off. This requires that Raft keep persistent state that survives a reboot. The paper's Figure 2 mentions which state should be persistent.
 
@@ -195,7 +195,7 @@ It is a good idea to run the tests multiple times before submitting and check th
 $ for i in {0..10}; do go test; done
 ```
 
-## Part 2D: Log Compaction
+## Part 2D: Log Compaction (due May 10)
 
 As things stand now with your code, a rebooting service replays the complete Raft log in order to restore its state. However, it's not practical for a long-running service to remember the complete Raft log forever. Instead, you'll modify Raft to cooperate to save space: from time to time a service will persistently store a "snapshot" of its current state, and Raft will discard log entries that precede the snapshot. When a service falls far behind the leader and must catch up, the service first installs a snapshot and then replays log entries from after the point at which the snapshot was created. Section 7 of the [extended Raft paper](https://cs-people.bu.edu/liagos/651-2022/papers/raft-extended.pdf) outlines the scheme; you will have to design the details.
 
