@@ -163,7 +163,7 @@ Insert calls to `persist()` at the points where your implementation changes pers
 ### Hints
 
 * Many of the 2C tests involve servers failing and the network losing RPC requests or replies. These events are non-deterministic, and you may get lucky and pass the tests, even though your code has bugs. Typically running the test several times will expose those bugs.
-* You will probably need the optimization that backs up nextIndex by more than one entry at a time. Look at the [extended Raft](https://cs-people.bu.edu/liagos/651-2022/papers/raft-extended.pdf) paper starting at the bottom of page 7 and top of page 8 (marked by a gray line). The paper is vague about the details; you will need to fill in the gaps, perhaps with the help of the 6.824 Raft lectures.
+* You will probably need the optimization that backs up nextIndex by more than one entry at a time. Look at the [extended Raft](https://cs-people.bu.edu/liagos/651-2022/papers/raft-extended.pdf) paper starting at the bottom of page 7 and top of page 8 (marked by a gray line). The paper is vague about the details; you will need to fill in the gaps, perhaps with the help of the Raft lectures.
 
 Your code should pass all the 2C tests (as shown below), as well as the 2A and 2B tests.
 
