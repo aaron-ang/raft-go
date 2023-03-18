@@ -329,10 +329,10 @@ func (rf *Raft) ticker() {
 		rf.mu.Unlock()
 
 		if state == Candidate {
-			delay_ms := rand.Int()%50 + 50
-			time.Sleep(time.Duration(delay_ms) * time.Millisecond)
-			rf.beginElection()
-			continue
+			if rf.stateAfterDelay() == Candidate {
+				rf.beginElection()
+				continue
+			}
 		}
 
 		if state == Leader {
@@ -347,6 +347,7 @@ func (rf *Raft) ticker() {
 
 		// Election timeout is randomized between 250 and 400ms.
 		ms := rand.Int()%150 + 250
+		// During sleep, resetTimeout may be set to true by an RPC.
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 
 		rf.mu.Lock()
@@ -354,9 +355,26 @@ func (rf *Raft) ticker() {
 		rf.mu.Unlock()
 
 		if !timeoutReset {
-			rf.beginElection()
+			rf.mu.Lock()
+			rf.state = Candidate
+			rf.mu.Unlock()
+
+			if rf.stateAfterDelay() == Candidate {
+				rf.beginElection()
+			}
 		}
 	}
+}
+
+func (rf *Raft) stateAfterDelay() State {
+	// randomize delay before deciding to start election
+	delay_ms := rand.Int() % 50
+	time.Sleep(time.Duration(delay_ms) * time.Millisecond)
+
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	return rf.state
 }
 
 func (rf *Raft) sendHeartbeat() {
@@ -390,7 +408,6 @@ func (rf *Raft) sendHeartbeat() {
 
 func (rf *Raft) beginElection() {
 	rf.mu.Lock()
-	rf.state = Candidate
 	rf.currentTerm++
 	rf.votedFor = rf.me
 	voteCount := 1
