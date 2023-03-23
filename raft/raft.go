@@ -83,12 +83,12 @@ type Raft struct {
 	nextIndex  []int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 	matchIndex []int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
 
-	state        State
-	lastAccessed time.Time
+	state         State
+	lastHeartbeat time.Time
 }
 
-const MinElectionTimeout = 500
-const MaxElectionTimeout = 1000
+const MinElectionTimeout = 400
+const MaxElectionTimeout = 800
 
 func randTimeout() time.Duration {
 	randTimeout := MinElectionTimeout + rand.Intn(MaxElectionTimeout-MinElectionTimeout)
@@ -195,7 +195,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term < rf.currentTerm {
 		return
 	}
-
 	if args.Term > rf.currentTerm {
 		rf.currentTerm, rf.votedFor = args.Term, -1
 		rf.state = Follower
@@ -205,12 +204,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	lastLogTerm := rf.log[lastLogIndex].Term
 
 	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) &&
-		(args.LastLogTerm > lastLogTerm || (args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)) {
+		(args.LastLogTerm > lastLogTerm ||
+			(args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)) {
+		reply.VoteGranted = true
 		rf.currentTerm = args.Term
 		rf.votedFor = args.CandidateId
 		rf.state = Follower
-		rf.lastAccessed = time.Now()
-		reply.VoteGranted = true
+		rf.lastHeartbeat = time.Now()
 	}
 }
 
@@ -266,17 +266,21 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	reply.Term = rf.currentTerm
 	reply.Success = false
+
 	if args.Term < rf.currentTerm {
 		return
 	}
 
-	prevLogIndex, entryTerm := len(rf.log)-1, rf.log[args.PrevLogIndex].Term
-	if prevLogIndex < args.PrevLogIndex || entryTerm != args.PrevLogTerm {
+	prevLogIndex := len(rf.log) - 1
+	entryTerm := rf.log[args.PrevLogIndex].Term
+
+	if prevLogIndex < args.PrevLogIndex ||
+		entryTerm != args.PrevLogTerm {
 		return
 	}
 
 	reply.Success = true
-	rf.lastAccessed = time.Now()
+	rf.lastHeartbeat = time.Now()
 }
 
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -348,10 +352,10 @@ func (rf *Raft) handleFollower() {
 	time.Sleep(electionTimeout)
 
 	rf.mu.Lock()
-	lastAccessed := rf.lastAccessed
+	lastHeartbeat := rf.lastHeartbeat
 	rf.mu.Unlock()
 
-	if time.Since(lastAccessed) >= electionTimeout {
+	if time.Since(lastHeartbeat) >= electionTimeout {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
 		rf.state = Candidate
@@ -408,7 +412,9 @@ func (rf *Raft) handleCandidate() {
 	// Wait for votes
 	for {
 		rf.mu.Lock()
-		if numVotes >= majority || numVoted == numPeers || time.Since(start) >= electionTimeout {
+		if numVotes >= majority ||
+			numVoted == numPeers ||
+			time.Since(start) >= electionTimeout {
 			break
 		}
 		rf.mu.Unlock()
@@ -451,8 +457,8 @@ func (rf *Raft) handleLeader() {
 			LeaderId: me,
 		}
 		rf.mu.Unlock()
-		reply := AppendEntriesReply{}
 
+		reply := AppendEntriesReply{}
 		go func(peer int) {
 			ok := rf.sendAppendEntries(peer, &args, &reply)
 			if !ok {
