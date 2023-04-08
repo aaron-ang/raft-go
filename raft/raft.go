@@ -18,7 +18,6 @@ package raft
 //
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"sync"
@@ -516,12 +515,9 @@ func (rf *Raft) handleCandidate() {
 }
 
 func (rf *Raft) handleLeader() {
-	rf.mu.Lock()
-	peers := rf.peers
 	me := rf.me
-	rf.mu.Unlock()
 
-	for peer := range peers {
+	for peer := range rf.peers {
 		if peer == me {
 			continue
 		}
@@ -539,7 +535,6 @@ func (rf *Raft) handleLeader() {
 		}
 		rf.mu.Unlock()
 
-		fmt.Println("leader", me, "sending append entries to", peer)
 		go func(peer int) {
 			ok := rf.sendAppendEntries(peer, &args, &reply)
 			if !ok {
@@ -586,12 +581,14 @@ func (rf *Raft) handleLeader() {
 			// if there exists an N such that N > commitIndex, a majority
 			// of matchIndex[i] >= N, and log[N].term == currentTerm:
 			// set commitIndex = N
-			majority := (len(peers) / 2) + 1
+			majority := (len(rf.peers) / 2) + 1
 			for n := len(rf.log) - 1; n > rf.commitIndex; n-- {
-				count := 0
-				for peer := range peers {
-					if rf.matchIndex[peer] >= n && rf.log[n].Term == rf.currentTerm {
-						count++
+				count := 1
+				if rf.log[n].Term == rf.currentTerm {
+					for i := 0; i < len(rf.peers); i++ {
+						if i != me && rf.matchIndex[i] >= n {
+							count++
+						}
 					}
 				}
 				if count >= majority {
@@ -621,12 +618,13 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.currentTerm = 0
 	rf.votedFor = -1
-	rf.log = append(rf.log, LogEntry{Term: 0})
+	rf.log = append(rf.log, LogEntry{Term: 0}) // dummy log entry
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 
 	rf.state = Follower
 	rf.applyCh = applyCh
+	rf.applyCh <- ApplyMsg{} // dummy apply message
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
