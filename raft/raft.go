@@ -55,6 +55,7 @@ type ApplyMsg struct {
 
 type LogEntry struct {
 	Term    int
+	Index   int
 	Command interface{}
 }
 
@@ -146,7 +147,25 @@ func (rf *Raft) readPersist(data []byte) {
 // have more recent info since it communicate the snapshot on applyCh.
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 	// Your code here (2D).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 
+	args := InstallSnapshotArgs{
+		Term:              rf.currentTerm,
+		LeaderId:          rf.me,
+		LastIncludedIndex: lastIncludedIndex,
+		LastIncludedTerm:  lastIncludedTerm,
+		Offset:            0,
+		Data:              snapshot,
+		Done:              true,
+	}
+	reply := InstallSnapshotReply{}
+	ok := rf.peers[rf.me].Call("Raft.InstallSnapshot", &args, &reply)
+
+	if ok && reply.Term > rf.currentTerm {
+		rf.convertToFollower(reply.Term)
+		return false
+	}
 	return true
 }
 
@@ -157,6 +176,45 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
 
+}
+
+type InstallSnapshotArgs struct {
+	Term              int    // leader’s term
+	LeaderId          int    // so follower can redirect clients
+	LastIncludedIndex int    // snapshot replaces all entries up through and including this index
+	LastIncludedTerm  int    // term of lastIncludedIndex
+	Offset            int    // byte offset where chunk is positioned in the snapshot file
+	Data              []byte // raw bytes of the snapshot chunk, starting at offset
+	Done              bool   // true if this is the last chunk
+}
+
+type InstallSnapshotReply struct {
+	Term int // currentTerm, for leader to update itself
+}
+
+// InstallSnapshot RPC handler.
+func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	reply.Term = rf.currentTerm
+	// rule 1
+	if args.Term < rf.currentTerm {
+		return
+	}
+	// rule 2
+	if args.Offset == 0 {
+		// TODO
+	}
+	// rule 3
+	// rule 4
+	if !args.Done {
+		return
+	}
+	// rule 5
+	// rule 6
+	// rule 7
+	// rule 8
 }
 
 func (rf *Raft) convertToFollower(term int) {
@@ -367,14 +425,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	index = len(rf.log)
 	term = rf.currentTerm
 	isLeader = rf.state == Leader
 	if !isLeader {
 		return index, term, false
 	}
 
-	rf.log = append(rf.log, LogEntry{term, command})
-	index = len(rf.log) - 1
+	rf.log = append(rf.log, LogEntry{term, index, command})
 	rf.persist()
 
 	return index, term, isLeader
@@ -406,11 +464,12 @@ func (rf *Raft) ticker() {
 		state := rf.state
 		rf.mu.Unlock()
 
-		if state == Follower {
+		switch state {
+		case Follower:
 			rf.handleFollower()
-		} else if state == Candidate {
+		case Candidate:
 			rf.handleCandidate()
-		} else {
+		case Leader:
 			rf.handleLeader()
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -522,14 +581,16 @@ func (rf *Raft) handleLeader() {
 		reply := AppendEntriesReply{}
 		rf.mu.Lock()
 		prevLogIndex := rf.nextIndex[peer] - 1
+		entries := rf.log[rf.nextIndex[peer]:]
 		args := AppendEntriesArgs{
 			Term:         rf.currentTerm,
 			LeaderId:     me,
 			PrevLogIndex: prevLogIndex,
 			PrevLogTerm:  rf.log[prevLogIndex].Term,
-			Entries:      rf.log[rf.nextIndex[peer]:],
+			Entries:      make([]LogEntry, len(entries)),
 			LeaderCommit: rf.commitIndex,
 		}
+		copy(args.Entries, entries)
 		rf.mu.Unlock()
 
 		go func(peer int) {
@@ -542,10 +603,7 @@ func (rf *Raft) handleLeader() {
 			defer rf.mu.Unlock()
 			defer rf.persist()
 
-			if rf.state != Leader || args.Term != rf.currentTerm || reply.Term < rf.currentTerm {
-				return
-			}
-			if reply.Term > args.Term {
+			if reply.Term > rf.currentTerm {
 				rf.convertToFollower(reply.Term)
 				return
 			}
