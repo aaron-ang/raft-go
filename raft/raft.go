@@ -78,17 +78,18 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what state a Raft server must maintain.
 
-	currentTerm       int        // latest term server has seen (initialized to 0 on first boot, increases monotonically)
-	votedFor          int        // candidateId that received vote in current term (or null if none)
-	log               []LogEntry // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
-	lastIncludedIndex int        // index of last included entry in snapshot
-	lastIncludedTerm  int        // term of last included entry in snapshot
+	currentTerm int        // latest term server has seen (initialized to 0 on first boot, increases monotonically)
+	votedFor    int        // candidateId that received vote in current term (or null if none)
+	log         []LogEntry // log entries; each entry contains command for state machine, and term when entry was received by leader (first index is 1)
 
 	commitIndex int // index of highest log entry known to be committed (initialized to 0, increases monotonically)
 	lastApplied int // index of highest log entry applied to state machine (initialized to 0, increases monotonically)
 
 	nextIndex  []int // for each server, index of the next log entry to send to that server (initialized to leader last log index + 1)
 	matchIndex []int // for each server, index of highest log entry known to be replicated on server (initialized to 0, increases monotonically)
+
+	lastIncludedIndex int // index of last included entry in snapshot
+	lastIncludedTerm  int // term of last included entry in snapshot
 
 	state         State
 	lastHeartbeat time.Time
@@ -208,6 +209,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	}
 
 	// rule 5: save snapshot file, discard any existing or partial snapshot with a smaller index
+	rf.persister.SaveStateAndSnapshot(rf.persister.ReadRaftState(), args.Data)
 
 	// rule 6: if existing log entry has same index and term as snapshot’s last included entry, retain log entries following it and reply
 	for i, logEntry := range rf.log {
@@ -225,8 +227,6 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	})
 
 	// rule 8: reset state machine using snapshot contents (and load snapshot’s cluster configuration)
-	rf.lastApplied = args.LastIncludedIndex
-	rf.commitIndex = args.LastIncludedIndex
 	rf.lastIncludedIndex = args.LastIncludedIndex
 	rf.lastIncludedTerm = args.LastIncludedTerm
 	rf.applyCh <- ApplyMsg{
@@ -280,8 +280,7 @@ func (rf *Raft) convertToFollower(term int) {
 }
 
 func (rf *Raft) getLastLogIndex() int {
-	lastLogIndex := rf.log[len(rf.log)-1].Index
-	return lastLogIndex
+	return rf.log[len(rf.log)-1].Index
 }
 
 func (rf *Raft) applyLogs() {
@@ -456,7 +455,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// rule 5
 	if args.LeaderCommit > rf.commitIndex {
-		rf.commitIndex = int(math.Min(float64(args.LeaderCommit), float64(len(rf.log)-1)))
+		rf.commitIndex = int(math.Min(float64(args.LeaderCommit), float64(rf.getLastLogIndex())))
 		go rf.applyLogs()
 	}
 }
@@ -486,7 +485,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	index = len(rf.log)
+	index = rf.getLastLogIndex() + 1
 	term = rf.currentTerm
 	isLeader = rf.state == Leader
 	if !isLeader {
@@ -623,7 +622,7 @@ func (rf *Raft) handleCandidate() {
 		rf.nextIndex = make([]int, len(rf.peers))
 		rf.matchIndex = make([]int, len(rf.peers))
 		for peer := range peers {
-			rf.nextIndex[peer] = len(rf.log)
+			rf.nextIndex[peer] = lastLogIndex + 1
 		}
 	} else {
 		rf.state = Follower
@@ -709,7 +708,7 @@ func (rf *Raft) startAppendEntries(peer int) {
 		for n := rf.getLastLogIndex(); n > rf.commitIndex; n-- {
 			count := 1
 			if rf.log[n].Term == rf.currentTerm {
-				for i := 0; i < len(rf.peers); i++ {
+				for i := range rf.peers {
 					if i != rf.me && rf.matchIndex[i] >= n {
 						count++
 					}
