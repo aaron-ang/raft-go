@@ -208,7 +208,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 
 	reply.Term = rf.currentTerm
 
-	if args.Term < rf.currentTerm || args.LeaderId == rf.me || rf.killed() {
+	if args.Term < rf.currentTerm {
 		return
 	}
 
@@ -278,10 +278,18 @@ func (rf *Raft) startInstallSnapshot(peer int) {
 
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
+		defer rf.persist()
+
+		if rf.state != Leader {
+			return
+		}
 
 		if reply.Term > rf.currentTerm {
 			rf.convertToFollower(reply.Term)
-			rf.persist()
+			return
+		}
+
+		if rf.currentTerm != args.Term {
 			return
 		}
 
@@ -294,6 +302,8 @@ func (rf *Raft) convertToFollower(term int) {
 	rf.state = Follower
 	rf.currentTerm = term
 	rf.votedFor = -1
+	rf.nextIndex = nil
+	rf.matchIndex = nil
 }
 
 // Returns the index of the last log entry.
@@ -539,6 +549,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return index, term, false
 	}
 
+	rf.nextIndex[rf.me] = index + 1
+	rf.matchIndex[rf.me] = index
 	rf.log = append(rf.log, LogEntry{Term: term, Index: index, Command: command})
 	rf.persist()
 
@@ -722,6 +734,10 @@ func (rf *Raft) startAppendEntries(peer int) {
 
 		if reply.Term > rf.currentTerm {
 			rf.convertToFollower(reply.Term)
+			return
+		}
+
+		if rf.state != Leader || rf.currentTerm != args.Term {
 			return
 		}
 
