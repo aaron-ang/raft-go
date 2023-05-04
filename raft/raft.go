@@ -788,8 +788,6 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	rf.currentTerm = 0
 	rf.votedFor = -1
 	rf.log = append(rf.log, LogEntry{Term: 0, Index: 0}) // dummy log entry
-	rf.commitIndex = 0
-	rf.lastApplied = 0
 
 	rf.state = Follower
 	rf.applyCh = applyCh
@@ -798,6 +796,9 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+
+	rf.commitIndex = rf.lastIncludedIndex
+	rf.lastApplied = rf.lastIncludedIndex
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
