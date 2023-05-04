@@ -174,8 +174,13 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 		return
 	}
 
-	rf.lastIncludedTerm = rf.log[index-rf.indexOffset()].Term
-	rf.log = rf.log[index-rf.sliceOffset():]
+	rf.lastIncludedTerm = rf.log[index-rf.lastIncludedIndex-1].Term
+	for i := len(rf.log) - 1; i >= 0; i-- {
+		if rf.log[i].Index == index {
+			rf.log = rf.log[i+1:]
+			break
+		}
+	}
 	rf.lastIncludedIndex = index
 
 	rf.persist()
@@ -314,13 +319,6 @@ func (rf *Raft) indexOffset() int {
 		return 0
 	}
 	return rf.lastIncludedIndex + 1
-}
-
-func (rf *Raft) sliceOffset() int {
-	if rf.lastIncludedIndex == 0 {
-		return 0
-	}
-	return rf.lastIncludedIndex
 }
 
 func (rf *Raft) applyLogs() {
@@ -486,20 +484,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	reply.Success = true
 
-	// rule 3
 	i, j := args.PrevLogIndex+1-offset, 0
-	for ; i < len(rf.log) && j < len(args.Entries); i, j = i+1, j+1 {
-		if rf.log[i].Term != args.Entries[j].Term {
-			break
+	if i >= 0 {
+		for ; i < len(rf.log) && j < len(args.Entries); i, j = i+1, j+1 {
+			if rf.log[i].Term != args.Entries[j].Term {
+				break
+			}
 		}
-	}
-	if i < len(rf.log) {
+		// rule 3
 		rf.log = rf.log[:i]
-	}
 
-	// rule 4
-	if len(args.Entries) > 0 {
-		rf.log = append(rf.log, args.Entries[j:]...)
+		// rule 4
+		if len(args.Entries) > 0 {
+			rf.log = append(rf.log, args.Entries[j:]...)
+		}
 	}
 
 	// rule 5
@@ -693,12 +691,18 @@ func (rf *Raft) startAppendEntries(peer int) {
 	rf.mu.Lock()
 	indexOffset := rf.indexOffset()
 	prevLogIndex := rf.nextIndex[peer] - 1
-	entries := rf.log[rf.nextIndex[peer]-rf.sliceOffset():]
+	var prevLogTerm int
+	if prevLogIndex < indexOffset {
+		prevLogTerm = rf.lastIncludedTerm
+	} else {
+		prevLogTerm = rf.log[prevLogIndex-indexOffset].Term
+	}
+	entries := rf.log[rf.nextIndex[peer]-indexOffset:]
 	args := AppendEntriesArgs{
 		Term:         rf.currentTerm,
 		LeaderId:     rf.me,
 		PrevLogIndex: prevLogIndex,
-		PrevLogTerm:  rf.log[prevLogIndex-indexOffset].Term,
+		PrevLogTerm:  prevLogTerm,
 		Entries:      make([]LogEntry, len(entries)),
 		LeaderCommit: rf.commitIndex,
 	}
@@ -723,10 +727,7 @@ func (rf *Raft) startAppendEntries(peer int) {
 
 		if reply.Success {
 			// update nextIndex and matchIndex for follower
-			newMatchIndex := prevLogIndex + len(args.Entries)
-			if newMatchIndex > rf.matchIndex[server] {
-				rf.matchIndex[server] = newMatchIndex
-			}
+			rf.matchIndex[server] = Max(rf.matchIndex[server], prevLogIndex+len(args.Entries))
 			rf.nextIndex[server] = rf.matchIndex[server] + 1
 		} else if reply.ConflictTerm == -1 {
 			// log inconsistency; decrement nextIndex and retry
