@@ -24,12 +24,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"cs350/labgob"
-	"cs350/labrpc"
+	"github.com/aaronang/raft-go/pkg/labgob"
+	"github.com/aaronang/raft-go/pkg/labrpc"
 )
-
-// import "bytes"
-// import "cs350/labgob"
 
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or

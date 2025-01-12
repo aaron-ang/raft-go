@@ -10,13 +10,14 @@ package raft
 
 import (
 	"bytes"
-	"cs350/labgob"
-	"cs350/labrpc"
 	"log"
 	"math/rand"
 	"runtime"
 	"sync"
 	"testing"
+
+	"github.com/aaronang/raft-go/pkg/labgob"
+	"github.com/aaronang/raft-go/pkg/labrpc"
 
 	crand "crypto/rand"
 	"encoding/base64"
