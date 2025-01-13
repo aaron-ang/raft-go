@@ -144,13 +144,30 @@ func (rf *Raft) readPersist(data []byte) {
 	// Your code here (2C).
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
-	if d.Decode(&rf.currentTerm) != nil ||
-		d.Decode(&rf.votedFor) != nil ||
-		d.Decode(&rf.log) != nil {
-		panic("decode error")
+
+	var currentTerm int
+	var votedFor int
+	var log []LogEntry
+
+	if d.Decode(&currentTerm) == nil {
+		rf.currentTerm = currentTerm
+	} else {
+		return
 	}
-	rf.lastApplied = rf.log[0].Index
-	rf.commitIndex = rf.log[0].Index
+
+	if d.Decode(&votedFor) == nil {
+		rf.votedFor = votedFor
+	} else {
+		return
+	}
+
+	if d.Decode(&log) == nil {
+		rf.log = log
+		rf.lastApplied = rf.log[0].Index
+		rf.commitIndex = rf.log[0].Index
+	} else {
+		return
+	}
 }
 
 // A service wants to switch to snapshot.  Only do so if Raft hasn't
