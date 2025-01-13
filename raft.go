@@ -116,9 +116,19 @@ func (rf *Raft) GetIndex(index int) int {
 }
 
 func (rf *Raft) GetLogEntry(index int) LogEntry {
+	if len(rf.log) == 0 {
+		panic("log is empty")
+	}
+
 	if index < 0 { // last included index
 		index += rf.log[0].Index + len(rf.log)
 	}
+
+	i := rf.GetIndex(index)
+	if i < 0 || i >= len(rf.log) {
+		panic("index out of range")
+	}
+
 	return rf.log[rf.GetIndex(index)]
 }
 
@@ -246,7 +256,8 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 
 		// if existing log entry has same index and term as snapshot’s last included entry,
 		// retain log entries following it and reply
-		for i, logEntry := range rf.log {
+		for i := range len(rf.log) - 1 {
+			logEntry := rf.log[i]
 			if logEntry.Index == args.LastIncludedIndex && logEntry.Term == args.LastIncludedTerm {
 				rf.log = rf.log[i+1:]
 				return
