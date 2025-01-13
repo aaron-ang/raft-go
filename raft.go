@@ -170,37 +170,6 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 }
 
-// A service wants to switch to snapshot.  Only do so if Raft hasn't
-// have more recent info since it communicate the snapshot on applyCh.
-func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
-	// Your code here (2D).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	defer rf.persist()
-
-	if lastIncludedIndex <= rf.commitIndex {
-		return false
-	}
-
-	log := make([]LogEntry, 0)
-	log = append(log, LogEntry{
-		Command: -1,
-		Term:    lastIncludedTerm,
-		Index:   lastIncludedIndex,
-	}) // dummy log entry
-
-	if lastIncludedIndex <= rf.GetLogEntry(-1).Index && rf.GetLogEntry(lastIncludedIndex).Term == lastIncludedTerm {
-		rf.log = append(log, rf.log[rf.GetIndex(lastIncludedIndex)+1:]...)
-	} else {
-		rf.log = log
-	}
-
-	rf.commitIndex = lastIncludedIndex
-	rf.lastApplied = lastIncludedIndex
-	rf.snapshot = snapshot
-	return true
-}
-
 // the service says it has created a snapshot that has
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
@@ -270,6 +239,24 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 		rf.mu.Unlock()
 		rf.applyCh <- applyMsg
 		rf.mu.Lock()
+
+		rf.snapshot = args.Data
+		rf.lastApplied = args.LastIncludedIndex
+		rf.commitIndex = args.LastIncludedIndex
+
+		// if existing log entry has same index and term as snapshot’s last included entry,
+		// retain log entries following it and reply
+		for i, logEntry := range rf.log {
+			if logEntry.Index == args.LastIncludedIndex && logEntry.Term == args.LastIncludedTerm {
+				rf.log = rf.log[i+1:]
+				return
+			}
+		}
+		// discard the entire log
+		rf.log = []LogEntry{{
+			Term:  args.LastIncludedTerm,
+			Index: args.LastIncludedIndex,
+		}}
 	}
 }
 
@@ -300,18 +287,13 @@ func (rf *Raft) startInstallSnapshot(peer int) {
 
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
-		defer rf.persist()
-
-		if rf.state != Leader {
-			return
-		}
 
 		if reply.Term > rf.currentTerm {
 			rf.convertToFollower(reply.Term)
-			return
+			rf.persist()
 		}
 
-		if rf.currentTerm != args.Term {
+		if rf.state != Leader || rf.currentTerm != reply.Term {
 			return
 		}
 
