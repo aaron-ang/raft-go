@@ -33,8 +33,8 @@ This repository contains a complete implementation of the Raft consensus algorit
 ├── raft.go       # Core Raft implementation
 ├── util.go       # Helper functions
 └── pkg/
-	├── labgob/     # Encoding utilities
-	└── labrpc/     # RPC framework
+	├── labgob/   # Encoding utilities
+	└── labrpc/   # RPC framework
 ```
 
 
@@ -57,16 +57,16 @@ rf.GetState() (term, isLeader)
 Run the full test suite with:
 
 ```bash
-go test --race
+go test -race
 ```
 
 Or test specific parts:
 
 ```bash
-go test --run 2A --race # Leader election
-go test --run 2B --race # Log replication
-go test --run 2C --race # Persistence
-go test --run 2D --race # Log compaction
+go test -run 2A -race # Leader election
+go test -run 2B -race # Log replication
+go test -run 2C -race # Persistence
+go test -run 2D -race # Log compaction
 ```
 
 The implementation passes all test cases while maintaining reasonable performance metrics (typical full test suite runtime is under 8 minutes).
